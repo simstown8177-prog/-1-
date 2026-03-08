@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 
 const STORE_STYLES = {
   pizza: {
