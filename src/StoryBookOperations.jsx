@@ -711,7 +711,18 @@ function StoryBookPage({ tasks, addTask, updateTask, deleteTask }) {
 
 export default function StoryBookOperations() {
   const [page, setPage] = useState("dashboard");
-  const [tasks, setTasks] = useState([]);
+  const [tasks, setTasks] = useState(() => {
+  try {
+    const saved = localStorage.getItem("storybook_tasks");
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    return [];
+  }
+});
+
+useEffect(() => {
+  localStorage.setItem("storybook_tasks", JSON.stringify(tasks));
+}, [tasks]);
 
   const addTask = (task) => {
     setTasks((prev) => [...prev, task]);
