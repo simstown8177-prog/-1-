@@ -141,20 +141,97 @@ function getDashboardAnalysis(tasks) {
       weaknesses: ["운영 판단을 위한 데이터가 없습니다."],
       solutions: ["스토리북에서 업무를 먼저 등록하세요."],
       priorities: [],
+      commandCenter: {
+        battlefield: "운영 전황 데이터가 없습니다.",
+        directive: "스토리북에서 핵심 업무를 먼저 등록하고 담당자를 배정하세요.",
+        communication: "메모와 진행률 입력 규칙을 먼저 정리해 팀 기준을 맞추세요.",
+      },
+      actionOrders: ["이번 주 핵심 업무 3건부터 먼저 등록하세요."],
+      ownerFocus: [],
+      storeFocus: [],
+      memoCoverage: 0,
+      urgentCount: 0,
     };
   }
 
+  const normalizedTasks = tasks.map((task) => ({
+    ...task,
+    percent: Number(task.percent ?? 0),
+    memo: String(task.memo ?? "").trim(),
+  }));
+
   const percent = Math.round(
-    tasks.reduce((sum, task) => sum + (task.percent ?? 0), 0) / tasks.length
+    normalizedTasks.reduce((sum, task) => sum + task.percent, 0) / normalizedTasks.length
   );
 
-  const delayed = tasks
-    .filter((task) => (task.percent ?? 0) < 50)
-    .sort((a, b) => (a.percent ?? 0) - (b.percent ?? 0));
+  const delayed = normalizedTasks
+    .filter((task) => task.percent < 50)
+    .sort((a, b) => a.percent - b.percent);
+
+  const memoFilledCount = normalizedTasks.filter((task) => task.memo).length;
+  const memoCoverage = Math.round((memoFilledCount / normalizedTasks.length) * 100);
+  const urgentTasks = normalizedTasks
+    .map((task) => {
+      let priorityScore = 100 - task.percent;
+      if (!task.memo) priorityScore += 15;
+      if (task.percent < 30) priorityScore += 20;
+      if ((task.endDay ?? 0) - (task.startDay ?? 0) >= 7) priorityScore += 10;
+      if (task.store === "all") priorityScore += 8;
+
+      return {
+        ...task,
+        priorityScore,
+      };
+    })
+    .sort((a, b) => b.priorityScore - a.priorityScore);
+
+  const ownerStats = Object.values(
+    normalizedTasks.reduce((acc, task) => {
+      const key = task.owner || "미지정";
+      if (!acc[key]) {
+        acc[key] = { owner: key, count: 0, avgPercent: 0, delayedCount: 0 };
+      }
+
+      acc[key].count += 1;
+      acc[key].avgPercent += task.percent;
+      if (task.percent < 50) acc[key].delayedCount += 1;
+      return acc;
+    }, {})
+  )
+    .map((item) => ({
+      ...item,
+      avgPercent: Math.round(item.avgPercent / item.count),
+    }))
+    .sort((a, b) => {
+      if (b.delayedCount !== a.delayedCount) return b.delayedCount - a.delayedCount;
+      return a.avgPercent - b.avgPercent;
+    });
+
+  const storeStats = Object.values(
+    normalizedTasks.reduce((acc, task) => {
+      const key = task.store || "all";
+      if (!acc[key]) {
+        acc[key] = { store: key, count: 0, avgPercent: 0, delayedCount: 0 };
+      }
+
+      acc[key].count += 1;
+      acc[key].avgPercent += task.percent;
+      if (task.percent < 50) acc[key].delayedCount += 1;
+      return acc;
+    }, {})
+  )
+    .map((item) => ({
+      ...item,
+      avgPercent: Math.round(item.avgPercent / item.count),
+    }))
+    .sort((a, b) => {
+      if (b.delayedCount !== a.delayedCount) return b.delayedCount - a.delayedCount;
+      return a.avgPercent - b.avgPercent;
+    });
 
   let status = "안전";
-  if (tasks.length > 0 && percent < 40) status = "위험";
-  else if (tasks.length > 0 && percent < 70) status = "주의";
+  if (normalizedTasks.length > 0 && (percent < 40 || delayed.length >= 4)) status = "위험";
+  else if (normalizedTasks.length > 0 && (percent < 70 || delayed.length >= 2)) status = "주의";
 
   const strengths = [];
   const weaknesses = [];
@@ -174,12 +251,51 @@ function getDashboardAnalysis(tasks) {
     solutions.push("현재 운영 흐름을 유지하며 퍼센티지와 메모를 계속 기록하세요.");
   }
 
-  if (tasks.some((task) => !task.memo || !task.memo.trim())) {
-    weaknesses.push("메모가 비어 있는 업무가 있어 세부 진행 상황 파악이 약합니다.");
-    solutions.push("업무별 메모를 기록해 문제 발생 원인과 다음 액션을 남기세요.");
+  if (memoCoverage < 80) {
+    weaknesses.push(`메모 입력률이 ${memoCoverage}%로 낮아 세부 진행 상황 파악이 약합니다.`);
+    solutions.push("업무별 메모에 이슈, 다음 액션, 요청사항을 남기도록 입력 규칙을 통일하세요.");
+  } else {
+    strengths.push(`메모 입력률이 ${memoCoverage}%로 전황 파악에 필요한 정보가 비교적 잘 모이고 있습니다.`);
   }
 
-  const priorities = delayed.slice(0, 5);
+  if (ownerStats[0]?.delayedCount > 0) {
+    weaknesses.push(`${ownerStats[0].owner} 담당 업무에 지연이 집중되어 있습니다.`);
+    solutions.push(`${ownerStats[0].owner} 업무를 분산하거나 우선순위를 재조정해 병목을 줄이세요.`);
+  }
+
+  if (storeStats[0]?.delayedCount > 0) {
+    solutions.push(`${storeStats[0].store === "pizza" ? "피자는 치즈빨" : storeStats[0].store === "gogi" ? "고기지" : "통합"} 매장 업무를 집중 점검하세요.`);
+  }
+
+  const priorities = urgentTasks.slice(0, 5);
+  const commandCenter = {
+    battlefield:
+      status === "위험"
+        ? `지연 업무 ${delayed.length}건이 운영 흐름을 누르고 있습니다. 현재는 방어보다 재정렬이 먼저입니다.`
+        : status === "주의"
+        ? `핵심 업무 일부가 밀리고 있어 운영선이 흔들릴 수 있습니다. 지금 개입하면 안정권으로 복구 가능합니다.`
+        : "핵심 업무 흐름은 유지되고 있습니다. 현재 상태를 유지하며 마감 전 품질 관리에 집중하면 됩니다.",
+    directive:
+      priorities[0]
+        ? `${priorities[0].owner} 담당의 "${priorities[0].title}"를 최우선으로 끌어올리세요. 진행률 ${priorities[0].percent}%이며, 다음 액션을 즉시 명문화해야 합니다.`
+        : "가장 중요한 업무부터 메모와 진행률을 최신화하세요.",
+    communication:
+      memoCoverage < 80
+        ? "팀 공지: 모든 업무에 오늘 기준 메모, 막힘 원인, 다음 액션을 반드시 남기도록 지시하세요."
+        : "팀 공지: 저진행 업무 중심으로 다음 액션과 마감 일정을 짧고 명확하게 업데이트하세요.",
+  };
+
+  const actionOrders = [
+    priorities[0]
+      ? `1순위 업무는 ${priorities[0].owner}의 "${priorities[0].title}"입니다. 오늘 안에 진행률과 메모를 다시 업데이트하세요.`
+      : "우선순위 업무를 지정할 데이터가 부족합니다.",
+    delayed.length > 1
+      ? `지연 업무 ${Math.min(delayed.length, 3)}건을 묶어 별도 체크리스트로 관리하세요.`
+      : "현재 지연 업무는 제한적이므로 마감 직전 품질 확인에 집중하세요.",
+    ownerStats[0]
+      ? `${ownerStats[0].owner} 담당 업무를 점검해 병목이 있으면 다른 담당자와 분산하세요.`
+      : "담당자별 부하 정보를 수집하세요.",
+  ];
 
   return {
     percent,
@@ -195,6 +311,12 @@ function getDashboardAnalysis(tasks) {
     weaknesses,
     solutions,
     priorities,
+    commandCenter,
+    actionOrders,
+    ownerFocus: ownerStats.slice(0, 3),
+    storeFocus: storeStats.slice(0, 3),
+    memoCoverage,
+    urgentCount: priorities.length,
   };
 }
 
@@ -212,12 +334,36 @@ function Dashboard({ tasks }) {
             <div className="h-full bg-black" style={{ width: `${analysis.percent}%` }} />
           </div>
           <p className="mt-3 text-2xl font-bold">{analysis.percent}%</p>
+          <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded-xl bg-zinc-100 p-3">
+              <p className="text-zinc-500">메모 입력률</p>
+              <p className="mt-1 font-bold">{analysis.memoCoverage}%</p>
+            </div>
+            <div className="rounded-xl bg-zinc-100 p-3">
+              <p className="text-zinc-500">긴급 관리</p>
+              <p className="mt-1 font-bold">{analysis.urgentCount}건</p>
+            </div>
+          </div>
         </div>
 
         <div className="rounded-[1.5rem] border border-zinc-200 bg-white p-6">
-          <p className="text-sm text-zinc-500">현재 운영 상황</p>
+          <p className="text-sm text-zinc-500">AI 전황 브리핑</p>
           <p className="mt-2 text-2xl font-bold">{analysis.status}</p>
           <p className="mt-3 text-sm text-zinc-700">{analysis.summary}</p>
+          <div className="mt-4 space-y-3 rounded-[1.25rem] bg-zinc-100 p-4 text-sm">
+            <div>
+              <p className="font-semibold">전황</p>
+              <p className="mt-1 text-zinc-700">{analysis.commandCenter.battlefield}</p>
+            </div>
+            <div>
+              <p className="font-semibold">지시</p>
+              <p className="mt-1 text-zinc-700">{analysis.commandCenter.directive}</p>
+            </div>
+            <div>
+              <p className="font-semibold">전달 문구</p>
+              <p className="mt-1 text-zinc-700">{analysis.commandCenter.communication}</p>
+            </div>
+          </div>
           {tasks.length === 0 ? (
             <p className="mt-4 text-sm text-zinc-500">업무가 없습니다. 업무를 추가하세요.</p>
           ) : (
@@ -238,6 +384,39 @@ function Dashboard({ tasks }) {
         </div>
       </div>
 
+      <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+        <div className="rounded-[1.5rem] border border-zinc-200 bg-white p-6">
+          <p className="text-sm text-zinc-500">AI 업무 지시</p>
+          <div className="mt-4 space-y-3">
+            {analysis.actionOrders.map((item, idx) => (
+              <div key={idx} className="rounded-[1.25rem] bg-black p-4 text-sm text-white">
+                {item}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-[1.5rem] border border-zinc-200 bg-white p-6">
+          <p className="text-sm text-zinc-500">담당 병목 감시</p>
+          <div className="mt-4 space-y-3">
+            {analysis.ownerFocus.length === 0 ? (
+              <p className="text-sm text-zinc-500">담당자 데이터가 없습니다.</p>
+            ) : (
+              analysis.ownerFocus.map((owner) => (
+                <div key={owner.owner} className="rounded-[1.25rem] bg-zinc-100 p-4 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold">{owner.owner}</p>
+                    <p className="text-zinc-500">{owner.count}건</p>
+                  </div>
+                  <p className="mt-2 text-zinc-700">평균 진행률 {owner.avgPercent}%</p>
+                  <p className="mt-1 text-zinc-700">지연 업무 {owner.delayedCount}건</p>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
       <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="rounded-[1.25rem] bg-red-100 p-4 text-sm">
           <p className="font-bold">위험</p>
@@ -253,6 +432,22 @@ function Dashboard({ tasks }) {
           <p className="font-bold">안전</p>
           <p className="mt-2">70~100%</p>
           <p className="mt-1 text-zinc-700">정상 운영 상태이며 현재 흐름 유지가 가능합니다.</p>
+        </div>
+      </div>
+
+      <div className="mt-6 rounded-[1.5rem] border border-zinc-200 bg-white p-6">
+        <p className="font-semibold">매장별 전황</p>
+        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+          {analysis.storeFocus.map((store) => (
+            <div key={store.store} className="rounded-[1.25rem] bg-zinc-100 p-4 text-sm">
+              <p className="font-semibold">
+                {store.store === "pizza" ? "피자는 치즈빨" : store.store === "gogi" ? "고기지" : "통합"}
+              </p>
+              <p className="mt-2 text-zinc-700">업무 수 {store.count}건</p>
+              <p className="mt-1 text-zinc-700">평균 진행률 {store.avgPercent}%</p>
+              <p className="mt-1 text-zinc-700">지연 업무 {store.delayedCount}건</p>
+            </div>
+          ))}
         </div>
       </div>
 
