@@ -104,18 +104,18 @@ function TopNav({ page, setPage }) {
 
   return (
     <div className="sticky top-0 z-30 w-full border-b border-zinc-200 bg-white">
-      <div className="mx-auto flex max-w-[2200px] items-center justify-between px-10 py-4">
+      <div className="mx-auto flex max-w-[2200px] flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-10">
         <div>
           <p className="text-lg font-bold">스토리북 시스템</p>
           <p className="text-xs text-zinc-500">Operation Program</p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="grid w-full grid-cols-3 gap-2 lg:w-auto lg:flex lg:items-center lg:gap-3">
           {items.map((item) => (
             <button
               key={item.id}
               onClick={() => setPage(item.id)}
-              className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+              className={`rounded-xl px-3 py-2 text-sm font-semibold transition sm:px-4 ${
                 page === item.id
                   ? "bg-black text-white"
                   : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
@@ -202,10 +202,10 @@ function Dashboard({ tasks }) {
   const analysis = useMemo(() => getDashboardAnalysis(tasks), [tasks]);
 
   return (
-    <div className="h-full overflow-y-auto p-10">
-      <h1 className="text-3xl font-black">운영 대시보드</h1>
+    <div className="h-full overflow-y-auto p-4 sm:p-6 lg:p-10">
+      <h1 className="text-2xl font-black sm:text-3xl">운영 대시보드</h1>
 
-      <div className="mt-8 grid grid-cols-2 gap-6">
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:mt-8 lg:grid-cols-2 lg:gap-6">
         <div className="rounded-[1.5rem] border border-zinc-200 bg-white p-6">
           <p className="text-sm text-zinc-500">전체 업무 진행률</p>
           <div className="mt-4 h-6 overflow-hidden rounded-full bg-zinc-200">
@@ -238,7 +238,7 @@ function Dashboard({ tasks }) {
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-3 gap-4">
+      <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="rounded-[1.25rem] bg-red-100 p-4 text-sm">
           <p className="font-bold">위험</p>
           <p className="mt-2">0~39%</p>
@@ -256,7 +256,7 @@ function Dashboard({ tasks }) {
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-3 gap-6">
+      <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-3 xl:gap-6">
         <div className="rounded-[1.5rem] border border-zinc-200 bg-white p-6">
           <p className="font-semibold">장점</p>
           <div className="mt-3 space-y-2 text-sm text-zinc-700">
@@ -290,9 +290,9 @@ function Dashboard({ tasks }) {
 
 function ManualPage() {
   return (
-    <div className="p-10">
-      <h1 className="text-3xl font-black">스토리북 메뉴얼</h1>
-      <div className="mt-8 rounded-[1.5rem] border border-zinc-200 bg-white p-8">
+    <div className="p-4 sm:p-6 lg:p-10">
+      <h1 className="text-2xl font-black sm:text-3xl">스토리북 메뉴얼</h1>
+      <div className="mt-6 rounded-[1.5rem] border border-zinc-200 bg-white p-6 sm:mt-8 sm:p-8">
         <p className="text-lg font-semibold">추후 작성 예정</p>
         <p className="mt-2 text-sm text-zinc-600">운영 방식과 업무 처리 기준을 이 페이지에 정리할 예정입니다.</p>
       </div>
@@ -391,8 +391,8 @@ function DatePickerModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
-      <div className="w-[760px] rounded-[2rem] bg-white p-8 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-6">
+      <div className="max-h-[92vh] w-full max-w-[760px] overflow-y-auto rounded-[2rem] bg-white p-4 shadow-2xl sm:p-8">
         <div className="flex items-center justify-between">
           <button
             onClick={goPrevMonth}
@@ -412,18 +412,18 @@ function DatePickerModal({
           </button>
         </div>
 
-        <div className="mt-8 grid grid-cols-7 gap-3 text-center text-sm text-zinc-500">
+        <div className="mt-6 grid grid-cols-7 gap-2 text-center text-xs text-zinc-500 sm:mt-8 sm:gap-3 sm:text-sm">
           {["일", "월", "화", "수", "목", "금", "토"].map((label) => (
             <p key={label}>{label}</p>
           ))}
         </div>
 
-        <div className="mt-4 grid grid-cols-7 gap-3">
+        <div className="mt-4 grid grid-cols-7 gap-2 sm:gap-3">
           {days.map((day) => (
             <button
               key={day}
               onClick={() => handleDayClick(day)}
-              className={`h-12 rounded-full text-sm font-medium transition ${
+              className={`h-10 rounded-full text-xs font-medium transition sm:h-12 sm:text-sm ${
                 isSelected(day)
                   ? "bg-black text-white"
                   : "bg-white text-zinc-800 hover:bg-zinc-100"
@@ -434,7 +434,7 @@ function DatePickerModal({
           ))}
         </div>
 
-        <div className="mt-8 flex items-center justify-between">
+        <div className="mt-6 flex flex-col gap-4 sm:mt-8 sm:flex-row sm:items-center sm:justify-between">
           <button
             onClick={() => {
               setRangeStart(null);
@@ -449,7 +449,7 @@ function DatePickerModal({
               ? "날짜를 선택하세요."
               : `${tempYear}.${tempMonth} ${rangeStart}~${rangeEnd ?? rangeStart}일`}
           </p>
-          <div className="flex gap-3">
+          <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:w-auto">
             <button onClick={onClose} className="rounded-xl border border-zinc-300 px-5 py-3 text-sm font-semibold">
               취소
             </button>
@@ -536,10 +536,10 @@ function ModalAddTask({ close, addTask, year, month, pageError }) {
 
   return (
     <>
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-6">
-        <div className="flex h-[86vh] w-[620px] flex-col rounded-[2rem] bg-white p-8 shadow-2xl">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold">업무 업데이트</h2>
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-3 sm:p-6">
+        <div className="flex h-[92vh] w-full max-w-[620px] flex-col rounded-[2rem] bg-white p-4 shadow-2xl sm:h-[86vh] sm:p-8">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xl font-bold sm:text-2xl">업무 업데이트</h2>
             <button onClick={close} className="rounded-xl border border-zinc-300 px-4 py-2 text-sm">
               닫기
             </button>
@@ -548,7 +548,7 @@ function ModalAddTask({ close, addTask, year, month, pageError }) {
           <div className="mt-6 flex-1 space-y-4 overflow-y-auto pr-1">
             {rows.map((row, index) => (
               <div key={index} className="rounded-[1.25rem] border border-zinc-200 p-4">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <input
                     value={row.title}
                     onChange={(e) => updateRow(index, "title", e.target.value)}
@@ -563,7 +563,7 @@ function ModalAddTask({ close, addTask, year, month, pageError }) {
                   />
                 </div>
 
-                <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <button
                     onClick={() => setPickerRowIndex(index)}
                     className="rounded-xl border border-zinc-300 p-3 text-left text-sm"
@@ -586,7 +586,7 @@ function ModalAddTask({ close, addTask, year, month, pageError }) {
 
           {error && error !== pageError ? <p className="mt-4 text-sm font-medium text-red-600">{error}</p> : null}
 
-          <div className="mt-5 grid grid-cols-2 gap-3">
+          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <button
               onClick={addRow}
               disabled={isSaving}
@@ -690,9 +690,9 @@ function ModalTaskDetail({ task, close, updateTask, deleteTask, year, month, pag
 
   return (
     <>
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-6">
-        <div className="w-[520px] rounded-[2rem] bg-white p-8 shadow-2xl">
-          <h2 className="text-2xl font-bold">업무 설정</h2>
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-3 sm:p-6">
+        <div className="max-h-[92vh] w-full max-w-[520px] overflow-y-auto rounded-[2rem] bg-white p-4 shadow-2xl sm:p-8">
+          <h2 className="text-xl font-bold sm:text-2xl">업무 설정</h2>
 
           <div className="mt-5 rounded-[1.25rem] border border-zinc-200 p-4">
             <p className="text-sm text-zinc-500">담당자</p>
@@ -733,7 +733,7 @@ function ModalTaskDetail({ task, close, updateTask, deleteTask, year, month, pag
             </div>
           </div>
 
-          <div className="mt-6 grid grid-cols-3 gap-3">
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
             <button
               onClick={handleSave}
               disabled={isSaving}
@@ -801,13 +801,27 @@ function StoryBookPage({ tasks, addTask, updateTask, deleteTask, pageError }) {
     weeks.push(calendarCells.slice(i, i + 7));
   }
 
+  const mobileDays = days.map((day) => ({
+    day,
+    tasks: tasks
+      .filter(
+        (task) =>
+          task.year === year &&
+          task.month === month &&
+          day >= task.startDay &&
+          day <= task.endDay
+      )
+      .slice(0, 10),
+  }));
+
   return (
     <div className="flex h-full">
-      <div className="flex-1 overflow-y-auto p-12 max-w-[2200px] mx-auto w-full">
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-3xl font-black">스토리북</h1>
+      <div className="mx-auto flex w-full max-w-[2200px] flex-1 overflow-y-auto p-4 sm:p-6 lg:p-12">
+        <div className="w-full">
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <h1 className="text-2xl font-black sm:text-3xl">스토리북</h1>
 
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
             <button
               onClick={() => {
                 if (month === 1) {
@@ -821,7 +835,7 @@ function StoryBookPage({ tasks, addTask, updateTask, deleteTask, pageError }) {
             >
               ◀
             </button>
-            <p className="font-bold">{year}년 {month}월</p>
+            <p className="min-w-[92px] text-center font-bold">{year}년 {month}월</p>
             <button
               onClick={() => {
                 if (month === 12) {
@@ -837,20 +851,20 @@ function StoryBookPage({ tasks, addTask, updateTask, deleteTask, pageError }) {
             </button>
             <button
               onClick={() => setShowAdd(true)}
-              className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
+              className="w-full rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white sm:w-auto"
             >
               업무 업데이트
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-7 gap-4 text-center text-sm text-zinc-500">
+        <div className="hidden grid-cols-7 gap-4 text-center text-sm text-zinc-500 lg:grid">
           {["일", "월", "화", "수", "목", "금", "토"].map((label) => (
             <p key={label}>{label}</p>
           ))}
         </div>
 
-        <div className="mt-4 space-y-5">
+        <div className="mt-4 hidden space-y-5 lg:block">
           {weeks.map((week, weekIndex) => (
             <div key={weekIndex} className="grid grid-cols-7 gap-4">
               {week.map((cell) => {
@@ -901,6 +915,47 @@ function StoryBookPage({ tasks, addTask, updateTask, deleteTask, pageError }) {
               })}
             </div>
           ))}
+        </div>
+
+        <div className="space-y-3 lg:hidden">
+          {mobileDays.map(({ day, tasks: dayTasks }) => (
+            <div key={day} className="rounded-[1.25rem] border border-zinc-200 bg-white p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-lg font-bold">{day}일</p>
+                <p className="text-xs text-zinc-500">{dayTasks.length}개 업무</p>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                {dayTasks.length === 0 ? (
+                  <p className="text-sm text-zinc-400">업무 없음</p>
+                ) : (
+                  dayTasks.map((task) => {
+                    const style = STORE_STYLES[task.store] || STORE_STYLES.all;
+
+                    return (
+                      <button
+                        key={`${task.id}-${day}`}
+                        onClick={() => setSelectedTaskId(task.id)}
+                        className={`w-full rounded-[1rem] border p-3 text-left text-sm ${style.card}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${style.badge}`}>
+                            {style.label}
+                          </span>
+                          <span className="text-[11px] font-semibold text-zinc-700">{task.percent ?? 0}%</span>
+                        </div>
+                        <p className="mt-2 font-bold text-zinc-900">{task.title}</p>
+                        <p className="mt-1 text-xs text-zinc-700">
+                          담당: {task.owner} · {task.startDay}~{task.endDay}일
+                        </p>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
         </div>
       </div>
 
