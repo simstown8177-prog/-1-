@@ -315,6 +315,11 @@ function DatePickerModal({
   const [rangeStart, setRangeStart] = useState(startDay);
   const [rangeEnd, setRangeEnd] = useState(endDay);
 
+  const clampDay = (day, daysInMonth) => {
+    if (day === null || day === undefined) return null;
+    return Math.min(Math.max(day, 1), daysInMonth);
+  };
+
   useEffect(() => {
     if (!isOpen) return;
     setTempYear(year);
@@ -323,10 +328,22 @@ function DatePickerModal({
     setRangeEnd(endDay);
   }, [endDay, isOpen, month, startDay, year]);
 
-  if (!isOpen) return null;
-
   const daysInMonth = new Date(tempYear, tempMonth, 0).getDate();
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setRangeStart((prev) => clampDay(prev, daysInMonth));
+    setRangeEnd((prev) => {
+      const nextEnd = clampDay(prev, daysInMonth);
+      const nextStart = clampDay(rangeStart, daysInMonth);
+
+      if (nextStart === null) return nextEnd;
+      if (nextEnd === null) return null;
+      return Math.max(nextStart, nextEnd);
+    });
+  }, [daysInMonth, isOpen, rangeStart]);
 
   const goPrevMonth = () => {
     setTempMonth((prevMonth) => {
@@ -370,6 +387,8 @@ function DatePickerModal({
     if (rangeEnd === null) return day === rangeStart;
     return day >= rangeStart && day <= rangeEnd;
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
@@ -425,11 +444,17 @@ function DatePickerModal({
           >
             초기화
           </button>
+          <p className="text-sm text-zinc-500">
+            {rangeStart === null
+              ? "날짜를 선택하세요."
+              : `${tempYear}.${tempMonth} ${rangeStart}~${rangeEnd ?? rangeStart}일`}
+          </p>
           <div className="flex gap-3">
             <button onClick={onClose} className="rounded-xl border border-zinc-300 px-5 py-3 text-sm font-semibold">
               취소
             </button>
             <button
+              disabled={rangeStart === null}
               onClick={() => {
                 if (rangeStart !== null) {
                   onApply({
@@ -440,7 +465,7 @@ function DatePickerModal({
                   });
                 }
               }}
-              className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white"
+              className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               적용
             </button>
