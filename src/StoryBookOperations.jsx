@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, updateDoc } from "firebase/firestore";
+import { db, firebaseConfigError } from "./firebase";
 
 const STORE_STYLES = {
   pizza: {
@@ -18,37 +20,79 @@ const STORE_STYLES = {
   },
 };
 
-const TASKS_API_PATH = "/api/tasks";
+function formatRequestError(error, fallback = "요청 처리에 실패했습니다.") {
+  const code = error?.code ?? "";
 
-async function requestJson(url, options = {}) {
-  const response = await fetch(url, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers ?? {}),
-    },
-    ...options,
+  if (code === "permission-denied") {
+    return "Firestore 권한이 없어 요청을 처리할 수 없습니다. 보안 규칙을 확인하세요.";
+  }
+
+  if (code === "unavailable") {
+    return "Firebase 연결이 불안정합니다. 잠시 후 다시 시도하세요.";
+  }
+
+  if (code === "unauthenticated") {
+    return "인증 정보가 없어 요청을 처리할 수 없습니다.";
+  }
+
+  if (code === "not-found") {
+    return "대상 업무를 찾을 수 없습니다.";
+  }
+
+  if (typeof error?.message === "string" && error.message.trim()) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
+function sortTasks(tasks) {
+  return [...tasks].sort((a, b) => {
+    const createdAtDiff = (a.createdAt ?? 0) - (b.createdAt ?? 0);
+    if (createdAtDiff !== 0) return createdAtDiff;
+    return String(a.title ?? "").localeCompare(String(b.title ?? ""), "ko");
   });
+}
 
-  if (!response.ok) {
-    let message = "요청 처리에 실패했습니다.";
-
-    try {
-      const data = await response.json();
-      if (data?.message) {
-        message = data.message;
-      }
-    } catch {
-      // Ignore invalid JSON error payloads.
-    }
-
-    throw new Error(message);
+function validateTask(task) {
+  if (!task.title?.trim() || !task.owner?.trim()) {
+    return "업무명과 담당자는 필수입니다.";
   }
 
-  if (response.status === 204) {
-    return null;
+  if (!Number.isInteger(task.year) || !Number.isInteger(task.month) || task.month < 1 || task.month > 12) {
+    return "연도와 월이 올바르지 않습니다.";
   }
 
-  return response.json();
+  const daysInMonth = new Date(task.year, task.month, 0).getDate();
+  if (
+    !Number.isInteger(task.startDay) ||
+    !Number.isInteger(task.endDay) ||
+    task.startDay < 1 ||
+    task.endDay < task.startDay ||
+    task.endDay > daysInMonth
+  ) {
+    return "선택한 날짜 범위가 올바르지 않습니다.";
+  }
+
+  if (!Number.isFinite(task.percent) || task.percent < 0 || task.percent > 100) {
+    return "진행률은 0에서 100 사이여야 합니다.";
+  }
+
+  return "";
+}
+
+function buildTaskPayload(task) {
+  return {
+    title: String(task.title ?? "").trim(),
+    owner: String(task.owner ?? "").trim(),
+    store: ["pizza", "gogi", "all"].includes(task.store) ? task.store : "pizza",
+    year: Number(task.year),
+    month: Number(task.month),
+    startDay: Number(task.startDay),
+    endDay: Number(task.endDay),
+    memo: String(task.memo ?? ""),
+    percent: Number(task.percent ?? 0),
+  };
 }
 
 function TopNav({ page, setPage }) {
@@ -407,7 +451,7 @@ function DatePickerModal({
   );
 }
 
-function ModalAddTask({ close, addTask, year, month }) {
+function ModalAddTask({ close, addTask, year, month, pageError }) {
   const [rows, setRows] = useState(
     Array.from({ length: 5 }, () => ({
       title: "",
@@ -459,7 +503,7 @@ function ModalAddTask({ close, addTask, year, month }) {
       );
       close();
     } catch (saveError) {
-      setError(saveError.message);
+      setError(formatRequestError(saveError));
     } finally {
       setIsSaving(false);
     }
@@ -515,7 +559,7 @@ function ModalAddTask({ close, addTask, year, month }) {
             ))}
           </div>
 
-          {error ? <p className="mt-4 text-sm font-medium text-red-600">{error}</p> : null}
+          {error && error !== pageError ? <p className="mt-4 text-sm font-medium text-red-600">{error}</p> : null}
 
           <div className="mt-5 grid grid-cols-2 gap-3">
             <button
@@ -558,7 +602,7 @@ function ModalAddTask({ close, addTask, year, month }) {
   );
 }
 
-function ModalTaskDetail({ task, close, updateTask, deleteTask, year, month }) {
+function ModalTaskDetail({ task, close, updateTask, deleteTask, year, month, pageError }) {
   const [percent, setPercent] = useState(task.percent ?? 0);
   const [memo, setMemo] = useState(task.memo ?? "");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -581,7 +625,7 @@ function ModalTaskDetail({ task, close, updateTask, deleteTask, year, month }) {
       });
       close();
     } catch (saveError) {
-      setError(saveError.message);
+      setError(formatRequestError(saveError));
     } finally {
       setIsSaving(false);
     }
@@ -595,7 +639,7 @@ function ModalTaskDetail({ task, close, updateTask, deleteTask, year, month }) {
       await deleteTask(task.id);
       close();
     } catch (deleteError) {
-      setError(deleteError.message);
+      setError(formatRequestError(deleteError));
       setIsSaving(false);
     }
   };
@@ -613,7 +657,7 @@ function ModalTaskDetail({ task, close, updateTask, deleteTask, year, month }) {
       });
       setPickerOpen(false);
     } catch (updateError) {
-      setError(updateError.message);
+      setError(formatRequestError(updateError));
     } finally {
       setIsSaving(false);
     }
@@ -688,7 +732,7 @@ function ModalTaskDetail({ task, close, updateTask, deleteTask, year, month }) {
             </button>
           </div>
 
-          {error ? <p className="mt-4 text-sm font-medium text-red-600">{error}</p> : null}
+          {error && error !== pageError ? <p className="mt-4 text-sm font-medium text-red-600">{error}</p> : null}
         </div>
       </div>
 
@@ -706,7 +750,7 @@ function ModalTaskDetail({ task, close, updateTask, deleteTask, year, month }) {
   );
 }
 
-function StoryBookPage({ tasks, addTask, updateTask, deleteTask }) {
+function StoryBookPage({ tasks, addTask, updateTask, deleteTask, pageError }) {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
@@ -835,7 +879,7 @@ function StoryBookPage({ tasks, addTask, updateTask, deleteTask }) {
         </div>
       </div>
 
-      {showAdd && <ModalAddTask close={() => setShowAdd(false)} addTask={addTask} year={year} month={month} />}
+      {showAdd && <ModalAddTask close={() => setShowAdd(false)} addTask={addTask} year={year} month={month} pageError={pageError} />}
 
       {selectedTask && (
         <ModalTaskDetail
@@ -845,6 +889,7 @@ function StoryBookPage({ tasks, addTask, updateTask, deleteTask }) {
           deleteTask={deleteTask}
           year={year}
           month={month}
+          pageError={pageError}
         />
       )}
     </div>
@@ -855,74 +900,92 @@ export default function StoryBookOperations() {
   const [page, setPage] = useState("dashboard");
   const [tasks, setTasks] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [pageError, setPageError] = useState("");
 
   useEffect(() => {
-    let isMounted = true;
+    if (!db) {
+      setPageError(firebaseConfigError || "Firebase 연결에 실패했습니다.");
+      setIsLoading(false);
+      return undefined;
+    }
 
-    const loadTasks = async ({ silent = false } = {}) => {
-      if (!silent && isMounted) {
-        setIsLoading(true);
+    const unsubscribe = onSnapshot(
+      collection(db, "tasks"),
+      (snapshot) => {
+        const nextTasks = snapshot.docs.map((taskDoc) => ({
+          id: taskDoc.id,
+          ...taskDoc.data(),
+        }));
+
+        setTasks(sortTasks(nextTasks));
+        setPageError("");
+        setIsLoading(false);
+      },
+      (snapshotError) => {
+        setPageError(formatRequestError(snapshotError, "업무 목록을 불러오지 못했습니다."));
+        setIsLoading(false);
       }
+    );
 
-      try {
-        const nextTasks = await requestJson(TASKS_API_PATH);
-        if (isMounted) {
-          setTasks(nextTasks);
-          setError("");
-        }
-      } catch (loadError) {
-        if (isMounted) {
-          setError(loadError.message);
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    loadTasks();
-
-    const intervalId = window.setInterval(() => {
-      loadTasks({ silent: true });
-    }, 15000);
-
-    return () => {
-      isMounted = false;
-      window.clearInterval(intervalId);
-    };
+    return unsubscribe;
   }, []);
 
   const addTask = async (task) => {
-    const createdTask = await requestJson(TASKS_API_PATH, {
-      method: "POST",
-      body: JSON.stringify(task),
-    });
+    if (!db) {
+      throw new Error(firebaseConfigError || "Firebase 연결에 실패했습니다.");
+    }
 
-    setTasks((prev) => [...prev, createdTask]);
-    setError("");
-    return createdTask;
+    const nextTask = {
+      ...buildTaskPayload(task),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    const validationError = validateTask(nextTask);
+
+    if (validationError) {
+      throw new Error(validationError);
+    }
+
+    await addDoc(collection(db, "tasks"), nextTask);
+    setPageError("");
   };
 
   const updateTask = async (id, data) => {
-    const updatedTask = await requestJson(`${TASKS_API_PATH}/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    });
+    if (!db) {
+      throw new Error(firebaseConfigError || "Firebase 연결에 실패했습니다.");
+    }
 
-    setTasks((prev) => prev.map((task) => (task.id === id ? updatedTask : task)));
-    setError("");
-    return updatedTask;
+    const currentTask = tasks.find((task) => task.id === id);
+    if (!currentTask) {
+      throw new Error("업무를 찾을 수 없습니다.");
+    }
+
+    const nextTask = {
+      ...currentTask,
+      ...data,
+      updatedAt: Date.now(),
+    };
+    const validationError = validateTask(nextTask);
+
+    if (validationError) {
+      throw new Error(validationError);
+    }
+
+    await updateDoc(doc(db, "tasks", id), {
+      ...buildTaskPayload(nextTask),
+      createdAt: currentTask.createdAt ?? Date.now(),
+      updatedAt: nextTask.updatedAt,
+    });
+    setPageError("");
   };
 
   const deleteTask = async (id) => {
-    await requestJson(`${TASKS_API_PATH}/${id}`, {
-      method: "DELETE",
-    });
+    if (!db) {
+      throw new Error(firebaseConfigError || "Firebase 연결에 실패했습니다.");
+    }
 
-    setTasks((prev) => prev.filter((task) => task.id !== id));
-    setError("");
+    await deleteDoc(doc(db, "tasks", id));
+    setPageError("");
   };
 
   return (
@@ -930,9 +993,9 @@ export default function StoryBookOperations() {
       <TopNav page={page} setPage={setPage} />
 
       <div className="flex-1 overflow-hidden overflow-y-auto">
-        {error ? (
+        {pageError ? (
           <div className="mx-auto mt-6 max-w-[2200px] rounded-2xl border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700">
-            {error}
+            {pageError}
           </div>
         ) : null}
         {isLoading ? (
@@ -941,7 +1004,7 @@ export default function StoryBookOperations() {
           </div>
         ) : null}
         {!isLoading && page === "dashboard" && <Dashboard tasks={tasks} />}
-        {!isLoading && page === "story" && <StoryBookPage tasks={tasks} addTask={addTask} updateTask={updateTask} deleteTask={deleteTask} />}
+        {!isLoading && page === "story" && <StoryBookPage tasks={tasks} addTask={addTask} updateTask={updateTask} deleteTask={deleteTask} pageError={pageError} />}
         {!isLoading && page === "manual" && <ManualPage />}
       </div>
     </div>
