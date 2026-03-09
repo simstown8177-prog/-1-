@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const STORE_STYLES = {
   pizza: {
@@ -17,6 +17,39 @@ const STORE_STYLES = {
     badge: "bg-zinc-200 text-zinc-900",
   },
 };
+
+const TASKS_API_PATH = "/api/tasks";
+
+async function requestJson(url, options = {}) {
+  const response = await fetch(url, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers ?? {}),
+    },
+    ...options,
+  });
+
+  if (!response.ok) {
+    let message = "요청 처리에 실패했습니다.";
+
+    try {
+      const data = await response.json();
+      if (data?.message) {
+        message = data.message;
+      }
+    } catch {
+      // Ignore invalid JSON error payloads.
+    }
+
+    throw new Error(message);
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  return response.json();
+}
 
 function TopNav({ page, setPage }) {
   const items = [
@@ -233,14 +266,43 @@ function DatePickerModal({
   onClose,
   onApply,
 }) {
+  const [tempYear, setTempYear] = useState(year);
   const [tempMonth, setTempMonth] = useState(month);
   const [rangeStart, setRangeStart] = useState(startDay);
   const [rangeEnd, setRangeEnd] = useState(endDay);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    setTempYear(year);
+    setTempMonth(month);
+    setRangeStart(startDay);
+    setRangeEnd(endDay);
+  }, [endDay, isOpen, month, startDay, year]);
+
   if (!isOpen) return null;
 
-  const daysInMonth = new Date(year, tempMonth, 0).getDate();
+  const daysInMonth = new Date(tempYear, tempMonth, 0).getDate();
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  const goPrevMonth = () => {
+    setTempMonth((prevMonth) => {
+      if (prevMonth === 1) {
+        setTempYear((prevYear) => prevYear - 1);
+        return 12;
+      }
+      return prevMonth - 1;
+    });
+  };
+
+  const goNextMonth = () => {
+    setTempMonth((prevMonth) => {
+      if (prevMonth === 12) {
+        setTempYear((prevYear) => prevYear + 1);
+        return 1;
+      }
+      return prevMonth + 1;
+    });
+  };
 
   const handleDayClick = (day) => {
     if (rangeStart === null || (rangeStart !== null && rangeEnd !== null)) {
@@ -270,17 +332,17 @@ function DatePickerModal({
       <div className="w-[760px] rounded-[2rem] bg-white p-8 shadow-2xl">
         <div className="flex items-center justify-between">
           <button
-            onClick={() => setTempMonth((m) => (m > 1 ? m - 1 : 12))}
+            onClick={goPrevMonth}
             className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-100 text-xl"
           >
             ‹
           </button>
           <div className="text-center">
-            <p className="text-lg font-bold">{year}년 {tempMonth}월</p>
+            <p className="text-lg font-bold">{tempYear}년 {tempMonth}월</p>
             <p className="mt-1 text-sm text-zinc-500">업무: {title}</p>
           </div>
           <button
-            onClick={() => setTempMonth((m) => (m < 12 ? m + 1 : 1))}
+            onClick={goNextMonth}
             className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-100 text-xl"
           >
             ›
@@ -327,6 +389,7 @@ function DatePickerModal({
               onClick={() => {
                 if (rangeStart !== null) {
                   onApply({
+                    year: tempYear,
                     month: tempMonth,
                     startDay: rangeStart,
                     endDay: rangeEnd ?? rangeStart,
@@ -350,6 +413,8 @@ function ModalAddTask({ close, addTask, year, month }) {
       title: "",
       owner: "",
       store: "pizza",
+      year,
+      month,
       startDay: 1,
       endDay: 1,
       memo: "",
@@ -357,6 +422,8 @@ function ModalAddTask({ close, addTask, year, month }) {
     }))
   );
   const [pickerRowIndex, setPickerRowIndex] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState("");
 
   const updateRow = (index, field, value) => {
     setRows((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
@@ -365,22 +432,37 @@ function ModalAddTask({ close, addTask, year, month }) {
   const addRow = () => {
     setRows((prev) => [
       ...prev,
-      { title: "", owner: "", store: "pizza", startDay: 1, endDay: 1, memo: "", percent: 0 },
+      { title: "", owner: "", store: "pizza", year, month, startDay: 1, endDay: 1, memo: "", percent: 0 },
     ]);
   };
 
-  const saveRows = () => {
-    rows
-      .filter((row) => row.title.trim() && row.owner.trim())
-      .forEach((row) => {
-        addTask({
-          ...row,
-          id: Date.now() + Math.random(),
-          year,
-          month,
-        });
-      });
-    close();
+  const saveRows = async () => {
+    const nextRows = rows.filter((row) => row.title.trim() && row.owner.trim());
+
+    if (nextRows.length === 0) {
+      setError("저장할 업무가 없습니다. 업무명과 담당자를 입력하세요.");
+      return;
+    }
+
+    setIsSaving(true);
+    setError("");
+
+    try {
+      await Promise.all(
+        nextRows.map((row) =>
+          addTask({
+            ...row,
+            year: row.year ?? year,
+            month: row.month ?? month,
+          })
+        )
+      );
+      close();
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -417,7 +499,7 @@ function ModalAddTask({ close, addTask, year, month }) {
                     onClick={() => setPickerRowIndex(index)}
                     className="rounded-xl border border-zinc-300 p-3 text-left text-sm"
                   >
-                    기간 설정: {row.startDay}~{row.endDay}일
+                    기간 설정: {row.year}.{row.month} {row.startDay}~{row.endDay}일
                   </button>
                   <select
                     value={row.store}
@@ -433,11 +515,21 @@ function ModalAddTask({ close, addTask, year, month }) {
             ))}
           </div>
 
+          {error ? <p className="mt-4 text-sm font-medium text-red-600">{error}</p> : null}
+
           <div className="mt-5 grid grid-cols-2 gap-3">
-            <button onClick={addRow} className="rounded-xl border border-zinc-300 p-3 text-sm font-semibold">
+            <button
+              onClick={addRow}
+              disabled={isSaving}
+              className="rounded-xl border border-zinc-300 p-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+            >
               + 업무 추가
             </button>
-            <button onClick={saveRows} className="rounded-xl bg-black p-3 text-sm font-semibold text-white">
+            <button
+              onClick={saveRows}
+              disabled={isSaving}
+              className="rounded-xl bg-black p-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
               저장
             </button>
           </div>
@@ -448,12 +540,13 @@ function ModalAddTask({ close, addTask, year, month }) {
         <DatePickerModal
           isOpen={pickerRowIndex !== null}
           title={rows[pickerRowIndex].title || "업무"}
-          year={year}
-          month={month}
+          year={rows[pickerRowIndex].year ?? year}
+          month={rows[pickerRowIndex].month ?? month}
           startDay={rows[pickerRowIndex].startDay}
           endDay={rows[pickerRowIndex].endDay}
           onClose={() => setPickerRowIndex(null)}
-          onApply={({ month: nextMonth, startDay, endDay }) => {
+          onApply={({ year: nextYear, month: nextMonth, startDay, endDay }) => {
+            updateRow(pickerRowIndex, "year", nextYear);
             updateRow(pickerRowIndex, "startDay", startDay);
             updateRow(pickerRowIndex, "endDay", endDay);
             updateRow(pickerRowIndex, "month", nextMonth);
@@ -469,6 +562,62 @@ function ModalTaskDetail({ task, close, updateTask, deleteTask, year, month }) {
   const [percent, setPercent] = useState(task.percent ?? 0);
   const [memo, setMemo] = useState(task.memo ?? "");
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setPercent(task.percent ?? 0);
+    setMemo(task.memo ?? "");
+  }, [task]);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    setError("");
+
+    try {
+      await updateTask(task.id, {
+        percent: Math.min(100, Math.max(0, percent)),
+        memo,
+      });
+      close();
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setIsSaving(true);
+    setError("");
+
+    try {
+      await deleteTask(task.id);
+      close();
+    } catch (deleteError) {
+      setError(deleteError.message);
+      setIsSaving(false);
+    }
+  };
+
+  const handleDateApply = async ({ year: nextYear, month: nextMonth, startDay, endDay }) => {
+    setIsSaving(true);
+    setError("");
+
+    try {
+      await updateTask(task.id, {
+        year: nextYear,
+        month: nextMonth,
+        startDay,
+        endDay,
+      });
+      setPickerOpen(false);
+    } catch (updateError) {
+      setError(updateError.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <>
@@ -517,30 +666,29 @@ function ModalTaskDetail({ task, close, updateTask, deleteTask, year, month }) {
 
           <div className="mt-6 grid grid-cols-3 gap-3">
             <button
-              onClick={() => {
-                updateTask(task.id, {
-                  percent: Math.min(100, Math.max(0, percent)),
-                  memo,
-                });
-                close();
-              }}
-              className="rounded-xl bg-black p-3 text-sm font-semibold text-white"
+              onClick={handleSave}
+              disabled={isSaving}
+              className="rounded-xl bg-black p-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               저장
             </button>
             <button
-              onClick={() => {
-                deleteTask(task.id);
-                close();
-              }}
-              className="rounded-xl bg-red-500 p-3 text-sm font-semibold text-white"
+              onClick={handleDelete}
+              disabled={isSaving}
+              className="rounded-xl bg-red-500 p-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               삭제
             </button>
-            <button onClick={close} className="rounded-xl border border-zinc-300 p-3 text-sm font-semibold">
+            <button
+              onClick={close}
+              disabled={isSaving}
+              className="rounded-xl border border-zinc-300 p-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+            >
               닫기
             </button>
           </div>
+
+          {error ? <p className="mt-4 text-sm font-medium text-red-600">{error}</p> : null}
         </div>
       </div>
 
@@ -552,14 +700,7 @@ function ModalTaskDetail({ task, close, updateTask, deleteTask, year, month }) {
         startDay={task.startDay}
         endDay={task.endDay}
         onClose={() => setPickerOpen(false)}
-        onApply={({ month: nextMonth, startDay, endDay }) => {
-          updateTask(task.id, {
-            month: nextMonth,
-            startDay,
-            endDay,
-          });
-          setPickerOpen(false);
-        }}
+        onApply={handleDateApply}
       />
     </>
   );
@@ -570,7 +711,8 @@ function StoryBookPage({ tasks, addTask, updateTask, deleteTask }) {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [showAdd, setShowAdd] = useState(false);
-  const [selectedTask, setSelectedTask] = useState(null);
+  const [selectedTaskId, setSelectedTaskId] = useState(null);
+  const selectedTask = tasks.find((task) => task.id === selectedTaskId) ?? null;
 
   const daysInMonth = new Date(year, month, 0).getDate();
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
@@ -669,7 +811,7 @@ function StoryBookPage({ tasks, addTask, updateTask, deleteTask }) {
                           return (
                             <button
                               key={`${task.id}-${cell.day}`}
-                              onClick={() => setSelectedTask(task)}
+                              onClick={() => setSelectedTaskId(task.id)}
                               className={`w-full rounded-[1rem] border p-3 text-left text-sm ${style.card}`}
                             >
                               <div className="flex items-start justify-between gap-2">
@@ -698,7 +840,7 @@ function StoryBookPage({ tasks, addTask, updateTask, deleteTask }) {
       {selectedTask && (
         <ModalTaskDetail
           task={selectedTask}
-          close={() => setSelectedTask(null)}
+          close={() => setSelectedTaskId(null)}
           updateTask={updateTask}
           deleteTask={deleteTask}
           year={year}
@@ -711,29 +853,76 @@ function StoryBookPage({ tasks, addTask, updateTask, deleteTask }) {
 
 export default function StoryBookOperations() {
   const [page, setPage] = useState("dashboard");
-  const [tasks, setTasks] = useState(() => {
-  try {
-    const saved = localStorage.getItem("storybook_tasks");
-    return saved ? JSON.parse(saved) : [];
-  } catch {
-    return [];
-  }
-});
+  const [tasks, setTasks] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
 
-useEffect(() => {
-  localStorage.setItem("storybook_tasks", JSON.stringify(tasks));
-}, [tasks]);
+  useEffect(() => {
+    let isMounted = true;
 
-  const addTask = (task) => {
-    setTasks((prev) => [...prev, task]);
+    const loadTasks = async ({ silent = false } = {}) => {
+      if (!silent && isMounted) {
+        setIsLoading(true);
+      }
+
+      try {
+        const nextTasks = await requestJson(TASKS_API_PATH);
+        if (isMounted) {
+          setTasks(nextTasks);
+          setError("");
+        }
+      } catch (loadError) {
+        if (isMounted) {
+          setError(loadError.message);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadTasks();
+
+    const intervalId = window.setInterval(() => {
+      loadTasks({ silent: true });
+    }, 15000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  const addTask = async (task) => {
+    const createdTask = await requestJson(TASKS_API_PATH, {
+      method: "POST",
+      body: JSON.stringify(task),
+    });
+
+    setTasks((prev) => [...prev, createdTask]);
+    setError("");
+    return createdTask;
   };
 
-  const updateTask = (id, data) => {
-    setTasks((prev) => prev.map((task) => (task.id === id ? { ...task, ...data } : task)));
+  const updateTask = async (id, data) => {
+    const updatedTask = await requestJson(`${TASKS_API_PATH}/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+
+    setTasks((prev) => prev.map((task) => (task.id === id ? updatedTask : task)));
+    setError("");
+    return updatedTask;
   };
 
-  const deleteTask = (id) => {
+  const deleteTask = async (id) => {
+    await requestJson(`${TASKS_API_PATH}/${id}`, {
+      method: "DELETE",
+    });
+
     setTasks((prev) => prev.filter((task) => task.id !== id));
+    setError("");
   };
 
   return (
@@ -741,9 +930,19 @@ useEffect(() => {
       <TopNav page={page} setPage={setPage} />
 
       <div className="flex-1 overflow-hidden overflow-y-auto">
-        {page === "dashboard" && <Dashboard tasks={tasks} />}
-        {page === "story" && <StoryBookPage tasks={tasks} addTask={addTask} updateTask={updateTask} deleteTask={deleteTask} />}
-        {page === "manual" && <ManualPage />}
+        {error ? (
+          <div className="mx-auto mt-6 max-w-[2200px] rounded-2xl border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700">
+            {error}
+          </div>
+        ) : null}
+        {isLoading ? (
+          <div className="flex h-full items-center justify-center text-sm font-semibold text-zinc-500">
+            데이터를 불러오는 중입니다.
+          </div>
+        ) : null}
+        {!isLoading && page === "dashboard" && <Dashboard tasks={tasks} />}
+        {!isLoading && page === "story" && <StoryBookPage tasks={tasks} addTask={addTask} updateTask={updateTask} deleteTask={deleteTask} />}
+        {!isLoading && page === "manual" && <ManualPage />}
       </div>
     </div>
   );
